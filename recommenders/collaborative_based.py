@@ -36,6 +36,7 @@ from surprise import Reader, Dataset
 from surprise import SVD, NormalPredictor, BaselineOnly, KNNBasic, NMF
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
+import scipy as sp 
 
 # Importing data
 movies_df = pd.read_csv('resources/data/movies.csv',sep = ',')
@@ -121,10 +122,45 @@ def collab_model(movie_list,top_n=10):
     indices = pd.Series(movies_df['title'])
     movie_ids = pred_movies(movie_list)
     df_init_users = ratings_df[ratings_df['userId']==movie_ids[0]]
-    for i in movie_ids :
-        df_init_users=df_init_users.append(ratings_df[ratings_df['userId']==i])
-    # Getting the cosine similarity matrix
-    cosine_sim = cosine_similarity(np.array(df_init_users), np.array(df_init_users))
+    
+    # Adding ratings for other users in movie_ids[1:]
+    for i in movie_ids[1:]:
+        df_init_users = df_init_users.append(ratings_df[ratings_df['userId'] == i])
+
+    # Including predictions for the chosen movies
+    for movie_id in movie_list:
+        predictions_df = pd.DataFrame(prediction_item(movie_id))
+        for user_id in set(df_init_users['userId']):
+            movie_idx = indices[indices == movie_id].index[0]
+            est = predictions_df['est'][predictions_df['uid'] == user_id].values[0]
+            df_init_users = df_init_users.append(pd.Series([int(user_id), int(movie_idx), est], index=['userId', 'movieId', 'rating']), ignore_index=True)
+
+    # Removing duplicate entries
+    df_init_users.drop_duplicates(inplace=True)
+
+    # Creating a pivot table
+    util_matrix = df_init_users.pivot_table(index=['userId'], columns=['movieId'], values='rating')
+
+    # Filling Nan values with 0's and saving the utility matrix in scipy's sparse matrix format
+    util_matrix.fillna(0, inplace=True)
+    util_matrix_sparse = sp.sparse.csr_matrix(util_matrix.values)
+
+    # Getting cosine similarity matrix
+    user_similarity = cosine_similarity(util_matrix_sparse.T)
+
+    # Saving the matrix as a dataframe 
+    cosine_sim = pd.DataFrame(user_similarity, index=util_matrix.columns, columns=util_matrix.columns)
+
+    # Calculating user similarity based on the given 'df_init_users' data
+    user_similarity = cosine_similarity(np.array(df_init_users), np.array(df_init_users))
+    cosine_sim = pd.DataFrame(user_similarity, index=df_init_users['movieId'].values.astype(int), columns=df_init_users['movieId'].values.astype(int))
+
+    # Removing duplicate rows from the  matrix
+    cosine_sim = cosine_sim.loc[~cosine_sim.index.duplicated(keep='first')]
+
+    # Transpose the matrix
+    cosine_sim = cosine_sim.T
+    
     idx_1 = indices[indices == movie_list[0]].index[0]
     idx_2 = indices[indices == movie_list[1]].index[0]
     idx_3 = indices[indices == movie_list[2]].index[0]
