@@ -331,7 +331,7 @@ def main():
             with open(file, "rb") as f:
                 data = f.read()
             return base64.b64encode(data).decode()
-          img = get_img_as_base64("resources/imgs/tv-screens2.gif")
+          img = get_img_as_base64("resources/imgs/tv-screens2.png")
           page_bg_img = f"""
         <style>
         [data-testid="stAppViewContainer"] > .main {{
